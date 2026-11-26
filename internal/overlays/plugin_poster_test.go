@@ -56,9 +56,9 @@ func TestOverlayArtworkUsesPluginURLs(t *testing.T) {
 		t.Fatal(err)
 	}
 	show := &core.Title{
-		Key:          core.RatingKey(9005000000001135),
+		Key:          core.RatingKey(9001000000000001),
 		Type:         core.TypeShow,
-		Title:        "One Pace",
+		Title:        "Plugin Show",
 		PosterPath:   "https://posters.example.test/show.png",
 		BackdropPath: "https://posters.example.test/backdrop.png",
 		LogoPath:     "https://posters.example.test/logo.png",

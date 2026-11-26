@@ -21,12 +21,17 @@ func TestGetPosterFallsBackToPluginPosterURL(t *testing.T) {
 	var requests atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
-		if r.URL.Path != "/posters/show.png" {
+		switch r.URL.Path {
+		case "/posters/show.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(poster)
+		case "/posters/page.png":
+			// Claims to be an image but is an HTML page.
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("<!doctype html><html><script>alert(1)</script></html>"))
+		default:
 			http.NotFound(w, r)
-			return
 		}
-		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write(poster)
 	}))
 	defer srv.Close()
 	p := config.Posters{Enabled: true, Source: "rpdb", APIKey: "key"}
@@ -46,6 +51,21 @@ func TestGetPosterFallsBackToPluginPosterURL(t *testing.T) {
 	}
 	if requests.Load() != 1 {
 		t.Fatalf("requests = %d, want 1", requests.Load())
+	}
+	// The bytes, not the declared type, decide: a page posing as an image is
+	// refused rather than served to clients.
+	page := &core.Title{Type: core.TypeShow, PosterPath: "http://posters.example.test/posters/page.png"}
+	if data, _, err := im.GetPoster(context.Background(), page, page.PosterPath, 500); err == nil {
+		t.Fatalf("non-image served as a poster (%d bytes)", len(data))
+	}
+	// A private address is refused before any request is made.
+	before := requests.Load()
+	private := &core.Title{Type: core.TypeShow, PosterPath: "http://127.0.0.1/poster.png"}
+	if _, _, err := im.GetPoster(context.Background(), private, private.PosterPath, 500); err == nil {
+		t.Fatal("private address fetched")
+	}
+	if requests.Load() != before {
+		t.Fatal("private address reached the test server")
 	}
 	// A TMDB path still goes through the TMDB path check.
 	if _, _, err := im.GetPoster(context.Background(), &core.Title{Type: core.TypeShow}, "not-a-path", 500); err == nil {
