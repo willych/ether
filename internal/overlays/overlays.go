@@ -81,6 +81,12 @@ type Facts struct {
 type ImageSource interface {
 	Get(context.Context, string, int) ([]byte, string, error)
 }
+
+// urlImageSource fetches absolute artwork URLs, such as the poster a plugin
+// item supplies itself, through the untrusted-URL client.
+type urlImageSource interface {
+	GetUntrustedURL(context.Context, string) ([]byte, string, error)
+}
 type posterSource interface {
 	GetPoster(context.Context, *core.Title, string, int) ([]byte, string, error)
 	PosterVersion() string
@@ -442,7 +448,7 @@ func (s *Service) Poster(ctx context.Context, u *core.User, t *core.Title, lang 
 		return nil, "", err
 	}
 	if t.Type == core.TypeEpisode && !cfg.BadgesOnEpisodes() {
-		return s.o.Images.Get(ctx, t.StillPath, 500)
+		return s.image(ctx, t.StillPath, 500)
 	}
 	ctx = context.WithValue(ctx, previewSettingsKey{}, cfg)
 	path, _ := s.Paths(ctx, u, t, lang)
@@ -454,7 +460,7 @@ func (s *Service) Poster(ctx context.Context, u *core.User, t *core.Title, lang 
 	if p, ok := s.o.Images.(posterSource); ok {
 		data, ct, err = p.GetPoster(ctx, t, path, 500)
 	} else {
-		data, ct, err = s.o.Images.Get(ctx, path, 500)
+		data, ct, err = s.image(ctx, path, 500)
 	}
 	if err != nil {
 		return nil, "", err
@@ -551,14 +557,26 @@ func (s *Service) Backdrop(ctx context.Context, u *core.User, t *core.Title, lan
 		return nil, "", errors.New("artwork unavailable")
 	}
 	_, path := s.Paths(ctx, u, t, lang)
-	return s.o.Images.Get(ctx, path, 1280)
+	return s.image(ctx, path, 1280)
 }
 
 func (s *Service) Logo(ctx context.Context, t *core.Title) ([]byte, string, error) {
 	if s.o.Images == nil {
 		return nil, "", errors.New("artwork unavailable")
 	}
-	return s.o.Images.Get(ctx, t.LogoPath, 500)
+	return s.image(ctx, t.LogoPath, 500)
+}
+
+// image reads one of a title's own artwork paths. TMDB paths go through the
+// image source's TMDB cache; absolute URLs, which plugin items supply for
+// their own artwork, are fetched as untrusted URLs when the source can.
+func (s *Service) image(ctx context.Context, path string, w int) ([]byte, string, error) {
+	if strings.HasPrefix(path, "https://") || strings.HasPrefix(path, "http://") {
+		if u, ok := s.o.Images.(urlImageSource); ok {
+			return u.GetUntrustedURL(ctx, path)
+		}
+	}
+	return s.o.Images.Get(ctx, path, w)
 }
 
 func (s *Service) visible(u *core.User, t *core.Title) bool {

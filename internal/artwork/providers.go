@@ -50,7 +50,8 @@ func (im *Images) PosterGeneration() uint64 {
 }
 
 // GetPoster never sends provider URLs to a client. Missing IDs, unsupported
-// title kinds and every provider failure use the original TMDB artwork.
+// title kinds and every provider failure use the original artwork: a TMDB
+// path, or the absolute URL a plugin item supplied as its own poster.
 func (im *Images) GetPoster(ctx context.Context, t *core.Title, fallback string, w int) ([]byte, string, error) {
 	p := im.posterSettings()
 	if p.Enabled && p.Validate() == nil {
@@ -78,7 +79,19 @@ func (im *Images) GetPoster(ctx context.Context, t *core.Title, fallback string,
 			}
 		}
 	}
+	if isAbsoluteImageURL(fallback) {
+		// Plugin items carry their own poster URL and no TMDB identity, so a
+		// provider never matches them; serve the plugin's poster instead of
+		// failing the TMDB path check.
+		return im.GetUntrustedURL(ctx, fallback)
+	}
 	return im.Get(ctx, fallback, w)
+}
+
+// isAbsoluteImageURL reports whether path is an http(s) URL rather than a
+// TMDB artwork path.
+func isAbsoluteImageURL(path string) bool {
+	return strings.HasPrefix(path, "https://") || strings.HasPrefix(path, "http://")
 }
 
 func providerURL(p config.Posters, t *core.Title) (string, bool) {
