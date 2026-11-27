@@ -580,6 +580,11 @@ func (s *Service) LibraryItems(ctx context.Context, viewer *core.Viewer, device 
 			return core.Page{}, core.ErrNotFound
 		}
 		stored = &lib
+		// A catalogue library with show-shaped plugin kinds among its
+		// sources merges their items with its catalogue titles.
+		if !catalogueOnly(ctx) && len(lib.MixedPluginSources()) > 0 {
+			return s.mixedLibraryItems(ctx, v, device, viewID, lib, q)
+		}
 		// A collection library is browsed typed whatever protocol
 		// presentations it has yet (a new library is console-only and
 		// opts into apps later, §15.3); every other source must be

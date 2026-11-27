@@ -75,6 +75,11 @@ func (c *librariesConsole) handleCatalogueSources(w http.ResponseWriter, r *http
 					if kind.Library.Name != "" {
 						src.Name = c.catalogueLabel(r.Context(), rec.ID, kind.Library.Name, src.Name)
 					}
+					// A show-shaped kind can also be added to a show catalogue
+					// library (validateCatalogueSources), so it lists as a show.
+					if kind.ShowShaped() {
+						src.MediaTypes = append(src.MediaTypes, string(core.TypeShow))
+					}
 					src.Logo = rec.Manifest.Logo
 					if c.app.pluginsRT.pluginitems != nil {
 						if state, err := c.app.pluginsRT.pluginitems.SyncStateOf(r.Context(), rec.ID, kind.Key); err == nil {

@@ -143,7 +143,12 @@ export function TitlesComeFrom({
             ) : null}
             {registry.data
               ?.filter(
-                (source) => source.group !== "plugin" && source.mediaTypes.includes(mediaType),
+                // A plugin kind lists its own key first; a show-shaped kind
+                // also lists "show" and can join a TV catalogue library.
+                (source) =>
+                  source.group !== "plugin"
+                    ? source.mediaTypes.includes(mediaType)
+                    : mediaType === "show" && source.mediaTypes.slice(1).includes("show"),
               )
               .map((source) => (
                 <label
