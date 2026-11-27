@@ -47,6 +47,12 @@ type catalogueSourceRef struct {
 	// limit is how many titles one sync reads: the list's grant in the
 	// plugin's limits.
 	limit int
+	// pluginKind is set for a plugin content kind ("plugin:<plugin>:<kind>").
+	// Its items live in the plugin item store, never in the catalogue.
+	pluginKind bool
+	// showShaped: the kind is shaped like a TV show (plugins.ShowShaped),
+	// so typ is "show" and it may join a show catalogue library.
+	showShaped bool
 }
 
 // resolveCatalogueSource resolves a catalogue source id. A plugin list
@@ -85,7 +91,13 @@ func (a *App) resolveCatalogueSource(ctx context.Context, id string) (catalogueS
 		if e := rec.Manifest.EffectiveEther(); e != nil {
 			for _, k := range e.Contributes.MediaKinds {
 				if k.Key == parts[2] {
-					return catalogueSourceRef{typ: "plugin:" + id}, nil
+					// A show-shaped kind counts as a show, so it can sit next
+					// to TMDB TV or TheTVDB in a show library. Every other
+					// kind keeps its own type and only its plugin library.
+					if k.ShowShaped() {
+						return catalogueSourceRef{typ: string(core.TypeShow), pluginKind: true, showShaped: true, label: rec.Name}, nil
+					}
+					return catalogueSourceRef{typ: "plugin:" + id, pluginKind: true}, nil
 				}
 			}
 		}
@@ -128,12 +140,13 @@ func (a *App) validateCatalogueSources(ctx context.Context, lib core.Library, id
 	}
 	typ := lib.MediaType
 	seen := map[string]bool{}
+	catalogueSources := 0
 	for _, id := range ids {
 		if seen[id] {
 			return fmt.Errorf("duplicate catalogue source")
 		}
 		seen[id] = true
-		sourceType, err := a.catalogueSourceType(ctx, id)
+		ref, err := a.resolveCatalogueSource(ctx, id)
 		if err != nil {
 			return err
 		}
@@ -141,11 +154,53 @@ func (a *App) validateCatalogueSources(ctx context.Context, lib core.Library, id
 			if len(ids) != 1 || id != "plugin:"+lib.PluginID+":"+lib.KindKey {
 				return fmt.Errorf("plugin libraries use their own content kind")
 			}
-		} else if sourceType != string(typ) {
+			continue
+		}
+		if ref.pluginKind {
+			// A plugin kind joins a catalogue library only when it is shaped
+			// like a show and the library holds shows.
+			if !ref.showShaped {
+				return fmt.Errorf("only plugin content shaped like a TV show (show, season and episode levels) can be added to a catalogue library")
+			}
+			if typ != core.TypeShow {
+				return fmt.Errorf("choose sources with the same media type")
+			}
+			if err := a.checkMixedPluginKindLibrary(ctx, id); err != nil {
+				return err
+			}
+			continue
+		}
+		if ref.typ != string(typ) {
 			return fmt.Errorf("choose sources with the same media type")
 		}
+		catalogueSources++
+	}
+	// A mixed library is a catalogue library with plugin content added: a
+	// library of plugin content alone is the plugin's own library.
+	if lib.Source != core.LibraryPlugin && catalogueSources == 0 {
+		return fmt.Errorf("keep at least one catalogue source; plugin content on its own is shown in the plugin's library")
 	}
 	return nil
+}
+
+// checkMixedPluginKindLibrary checks that a plugin kind added to a
+// catalogue library has its own plugin library, which stores and browses
+// its items. The plugin library may be hidden; it may not be deleted.
+func (a *App) checkMixedPluginKindLibrary(ctx context.Context, id string) error {
+	if a.libraries == nil {
+		return nil
+	}
+	pluginID, kindKey, _ := core.PluginKindSource(id)
+	libs, err := a.libraries.List(ctx)
+	if err != nil {
+		return fmt.Errorf("couldn't read libraries: %w", err)
+	}
+	for _, l := range libs {
+		if l.Source == core.LibraryPlugin && l.PluginID == pluginID && l.KindKey == kindKey {
+			return nil
+		}
+	}
+	return fmt.Errorf("the plugin's own library for this content was removed; restore it before adding its content to another library")
 }
 
 // catalogueSyncSlots is how many catalogue lists sync at once, so one big

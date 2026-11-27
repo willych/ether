@@ -14,7 +14,9 @@ var _ frontend.LibraryScopeReader = (*Service)(nil)
 // libraryBrowseFilter composes the source pool and visible rules in indexed SQL.
 func (s *Service) libraryBrowseFilter(ctx context.Context, v *core.User, lib core.Library, req core.Filter) core.Filter {
 	f := req
-	f.CatalogueSources = lib.Sources
+	// Plugin content kinds of a mixed library are read from the plugin
+	// item store (mixedLibraryItems), never from catalogue membership.
+	f.CatalogueSources = lib.CatalogueOnlySources()
 	for _, source := range f.CatalogueSources {
 		if source == "tmdb-movies" || source == "tmdb-tv" {
 			f.CatalogueSources = nil // The union includes the full catalogue.

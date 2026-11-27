@@ -71,7 +71,7 @@ func (s *Service) SourceMember(ctx context.Context, lib core.Library, key core.R
 			return true, nil
 		}
 	}
-	for _, id := range lib.Sources {
+	for _, id := range lib.CatalogueOnlySources() {
 		var n int
 		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM libraries_catalogue_members WHERE source_id=? AND key=?`, id, int64(key)).Scan(&n); err != nil {
 			return false, err
